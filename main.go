@@ -17,7 +17,6 @@ type runtimeOptions struct {
 }
 
 func handleClient(conn net.Conn, dst string) {
-
 	fromConn := conn
 	toConn, err := net.Dial("tcp", dst)
 	if err != nil {
