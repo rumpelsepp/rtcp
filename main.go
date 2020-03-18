@@ -24,10 +24,11 @@ func handleClient(conn net.Conn, dst string) {
 		return
 	}
 
-	rlog.Debugf("established connection to: %s", dst)
+	rlog.Debugf("established connection: %s", toConn)
+	defer rlog.Debugf("association lost: %s %s", conn, toConn)
 
 	if _, _, err = helpers.BidirectCopy(fromConn, toConn); err != nil {
-		rlog.Warning(err)
+		rlog.Debug(err)
 	}
 }
 
