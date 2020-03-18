@@ -9,13 +9,6 @@ import (
 	"git.sr.ht/~sircmpwn/getopt"
 )
 
-type runtimeOptions struct {
-	from    string
-	to      string
-	verbose bool
-	help    bool
-}
-
 func handleClient(conn net.Conn, dst string) {
 	fromConn := conn
 	toConn, err := net.Dial("tcp", dst)
@@ -32,9 +25,16 @@ func handleClient(conn net.Conn, dst string) {
 	}
 }
 
+type runtimeOptions struct {
+	listen  string
+	to      string
+	verbose bool
+	help    bool
+}
+
 func main() {
 	opts := runtimeOptions{}
-	getopt.StringVar(&opts.from, "f", "", "specify address mapping from")
+	getopt.StringVar(&opts.listen, "l", ":8000", "listen on this addr:port")
 	getopt.StringVar(&opts.to, "t", "", "specify address mapping to")
 	getopt.BoolVar(&opts.verbose, "v", false, "enable debugging output")
 	getopt.BoolVar(&opts.help, "h", false, "show this page and exit")
@@ -53,17 +53,17 @@ func main() {
 		rlog.SetLogLevel(rlog.DEBUG)
 	}
 
-	if opts.from == "" || opts.to == "" {
+	if opts.listen == "" || opts.to == "" {
 		rlog.Crit("no address mapping specified")
 	}
 
-	ln, err := net.Listen("tcp", opts.from)
+	ln, err := net.Listen("tcp", opts.listen)
 	if err != nil {
 		rlog.Crit(err)
 	}
 
 	rlog.Infof("started rumpelsepp's rtcp server")
-	rlog.Infof("serving from '%s' to '%s'", opts.from, opts.to)
+	rlog.Infof("listening on '%s'; proxying to '%s'", opts.listen, opts.to)
 
 	for {
 		conn, err := ln.Accept()
@@ -72,8 +72,7 @@ func main() {
 			continue
 		}
 
-		rlog.Debugf("got connection from: %v", opts.from)
-
+		rlog.Debugf("got connection: %s", conn)
 		go handleClient(conn, opts.to)
 	}
 }
