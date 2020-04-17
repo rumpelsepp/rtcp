@@ -18,7 +18,7 @@ func handleClient(conn net.Conn, dst string) {
 	}
 
 	rlog.Debugf("established connection: %s", toConn.RemoteAddr())
-	defer rlog.Debugf("association lost: %s %s", conn.RemoteAddr(), toConn.RemoteAddr())
+	defer rlog.Debugf("association lost: %s<->%s", conn.RemoteAddr(), toConn.RemoteAddr())
 
 	if _, _, err = helpers.BidirectCopy(fromConn, toConn); err != nil {
 		rlog.Debug(err)
@@ -72,7 +72,7 @@ func main() {
 			continue
 		}
 
-		rlog.Debugf("got connection: %s", conn)
+		rlog.Debugf("got connection: %s", conn.RemoteAddr())
 		go handleClient(conn, opts.to)
 	}
 }
