@@ -8,6 +8,8 @@ git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421103116-af57861a6e63 h1:iBD6Vvi9qdkqt
 git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421103116-af57861a6e63/go.mod h1:hgGGxiExe8Zm6I3pnE37zvq55gdU+b34E6eJXJlFhhY=
 git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421104414-9c9bce11f1c2 h1:Oml4MZCtl+6OqCrVnCGFB0fb93fcdC90ByMoeo97PeU=
 git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421104414-9c9bce11f1c2/go.mod h1:hgGGxiExe8Zm6I3pnE37zvq55gdU+b34E6eJXJlFhhY=
+git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421114738-e5a1deacb6e5 h1:61Aq2ViTOSdbz3VmXjPD+NfVnSomK7MGg/WEWz+pKlk=
+git.sr.ht/~rumpelsepp/socks5 v0.0.0-20200421114738-e5a1deacb6e5/go.mod h1:hgGGxiExe8Zm6I3pnE37zvq55gdU+b34E6eJXJlFhhY=
 git.sr.ht/~sircmpwn/getopt v0.0.0-20191230200459-23622cc906b3 h1:4wDp4BKF7NQqoh73VXpZsB/t1OEhDpz/zEpmdQfbjDk=
 git.sr.ht/~sircmpwn/getopt v0.0.0-20191230200459-23622cc906b3/go.mod h1:wMEGFFFNuPos7vHmWXfszqImLppbc0wEhh6JBfJIUgw=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
