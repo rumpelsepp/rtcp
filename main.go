@@ -3,16 +3,25 @@ package main
 import (
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"git.sr.ht/~rumpelsepp/helpers"
 	"git.sr.ht/~rumpelsepp/rlog"
+	"git.sr.ht/~rumpelsepp/socks5"
 	"git.sr.ht/~sircmpwn/getopt"
 )
 
-func handleClient(conn *net.TCPConn, dst string, keepAlive bool, keepAliveTime int) {
+type tcpProxy struct {
+	listen        string
+	dst           string
+	keepAlive     bool
+	keepAliveTime time.Duration
+}
+
+func (p *tcpProxy) handleClient(conn *net.TCPConn) {
 	fromTCPConn := conn
-	toConn, err := net.Dial("tcp", dst)
+	toConn, err := net.Dial("tcp", p.dst)
 	if err != nil {
 		rlog.Warning(err)
 		return
@@ -20,17 +29,17 @@ func handleClient(conn *net.TCPConn, dst string, keepAlive bool, keepAliveTime i
 
 	toTCPConn := toConn.(*net.TCPConn)
 
-	if keepAlive {
+	if p.keepAlive {
 		if err := fromTCPConn.SetKeepAlive(true); err != nil {
 			rlog.Warningf("Set KeepAlive failed: %s", err)
 		}
-		if err := fromTCPConn.SetKeepAlivePeriod(time.Duration(keepAliveTime) * time.Second); err != nil {
+		if err := fromTCPConn.SetKeepAlivePeriod(time.Duration(p.keepAliveTime) * time.Second); err != nil {
 			rlog.Warning("Set KeepAlivePeriod failed: %s", err)
 		}
 		if err := toTCPConn.SetKeepAlive(true); err != nil {
 			rlog.Warningf("Set KeepAlive failed: %s", err)
 		}
-		if err := toTCPConn.SetKeepAlivePeriod(time.Duration(keepAliveTime) * time.Second); err != nil {
+		if err := toTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
 			rlog.Warning("Set KeepAlivePeriod failed: %s", err)
 		}
 	}
@@ -43,21 +52,41 @@ func handleClient(conn *net.TCPConn, dst string, keepAlive bool, keepAliveTime i
 	}
 }
 
+func (p *tcpProxy) Serve() error {
+	ln, err := net.Listen("tcp", p.listen)
+	if err != nil {
+		return err
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			rlog.Warning(err)
+			continue
+		}
+
+		rlog.Debugf("got connection: %s", conn.RemoteAddr())
+		go p.handleClient(conn.(*net.TCPConn))
+	}
+}
+
 type runtimeOptions struct {
 	listen        string
 	keepAlive     bool
 	keepAliveTime int
 	to            string
+	socks         string
 	verbose       bool
 	help          bool
 }
 
 func main() {
 	opts := runtimeOptions{}
-	getopt.StringVar(&opts.listen, "l", ":8000", "listen on this addr:port")
+	getopt.StringVar(&opts.listen, "l", "", "listen on this addr:port")
 	getopt.StringVar(&opts.to, "t", "", "specify address mapping to")
 	getopt.BoolVar(&opts.keepAlive, "a", false, "enable tcp keepalive probes")
 	getopt.IntVar(&opts.keepAliveTime, "k", 25, "specify keepalive time in seconds")
+	getopt.StringVar(&opts.socks, "s", "", "enable a socks5 listener on addr:port")
 	getopt.BoolVar(&opts.verbose, "v", false, "enable debugging output")
 	getopt.BoolVar(&opts.help, "h", false, "show this page and exit")
 
@@ -75,26 +104,37 @@ func main() {
 		rlog.SetLogLevel(rlog.DEBUG)
 	}
 
-	if opts.listen == "" || opts.to == "" {
-		rlog.Crit("no address mapping specified")
-	}
-
-	ln, err := net.Listen("tcp", opts.listen)
-	if err != nil {
-		rlog.Crit(err)
-	}
-
-	rlog.Infof("started rumpelsepp's rtcp server")
-	rlog.Infof("listening on '%s'; proxying to '%s'", opts.listen, opts.to)
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			rlog.Warning(err)
-			continue
+	var wg sync.WaitGroup
+	if opts.listen != "" {
+		if opts.listen == "" || opts.to == "" {
+			rlog.Crit("no address mapping specified")
 		}
 
-		rlog.Debugf("got connection: %s", conn.RemoteAddr())
-		go handleClient(conn.(*net.TCPConn), opts.to, opts.keepAlive, opts.keepAliveTime)
+		rlog.Infof("tcp proxy listening on '%s'; proxying to '%s'", opts.listen, opts.to)
+		wg.Add(1)
+		go func() {
+			proxy := tcpProxy{
+				listen:        opts.listen,
+				dst:           opts.to,
+				keepAlive:     opts.keepAlive,
+				keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
+			}
+			err := proxy.Serve()
+			rlog.Crit(err)
+			wg.Done()
+		}()
 	}
+	if opts.socks != "" {
+		rlog.Infof("socks5 proxy listening on '%s'", opts.socks)
+		wg.Add(1)
+		go func() {
+			proxy := socks5.NewServer(opts.socks)
+			err := proxy.Serve()
+			rlog.Crit(err)
+			wg.Done()
+		}()
+
+	}
+	rlog.Infof("started rumpelsepp's rtcp server")
+	wg.Wait()
 }
