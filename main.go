@@ -76,6 +76,8 @@ type runtimeOptions struct {
 	keepAliveTime int
 	to            string
 	socks         string
+	username      string
+	password      string
 	verbose       bool
 	help          bool
 }
@@ -87,6 +89,8 @@ func main() {
 	getopt.BoolVar(&opts.keepAlive, "a", false, "enable tcp keepalive probes")
 	getopt.IntVar(&opts.keepAliveTime, "k", 25, "specify keepalive time in seconds")
 	getopt.StringVar(&opts.socks, "s", "", "enable a socks5 listener on addr:port")
+	getopt.StringVar(&opts.username, "u", "", "optional username for SOCKS server")
+	getopt.StringVar(&opts.password, "p", "", "optional password for SOCKS server")
 	getopt.BoolVar(&opts.verbose, "v", false, "enable debugging output")
 	getopt.BoolVar(&opts.help, "h", false, "show this page and exit")
 
@@ -128,7 +132,7 @@ func main() {
 		rlog.Infof("socks5 proxy listening on '%s'", opts.socks)
 		wg.Add(1)
 		go func() {
-			proxy := socks5.NewServer(opts.socks)
+			proxy := socks5.NewServer(opts.socks, opts.username, opts.password)
 			err := proxy.Serve()
 			rlog.Crit(err)
 			wg.Done()
