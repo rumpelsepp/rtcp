@@ -14,7 +14,8 @@ This opens port 8000 on all interfaces and forwards everything to 1.1.1.1:80.
 ## SOCKS5 proxy
 
 `rtcp` also supports SOCKS5 for dynamic portforwarding.
-Authentication is not supported right now.
+Username and Password based authentication as available.
+Check the help with `-h`.
 
 ```
 $ rtcp -s ":1080"
