@@ -1,18 +1,65 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
 	"time"
 
-	"git.sr.ht/~rumpelsepp/helpers"
-	"git.sr.ht/~rumpelsepp/socks5"
-	"git.sr.ht/~sircmpwn/getopt"
-	"github.com/Fraunhofer-AISEC/penlog"
+	"github.com/spf13/pflag"
 )
 
-var logger = penlog.NewLogger("", os.Stderr)
+func bidirectCopy(left io.ReadWriteCloser, right io.ReadWriteCloser) (int, int, error) {
+	var (
+		n1   = 0
+		n2   = 0
+		err  error
+		err1 error
+		err2 error
+		wg   sync.WaitGroup
+	)
+
+	wg.Add(2)
+
+	go func() {
+		if n, err := io.Copy(right, left); err != nil {
+			err1 = err
+		} else {
+			n1 = int(n)
+		}
+
+		right.Close()
+		wg.Done()
+	}()
+
+	go func() {
+		if n, err := io.Copy(left, right); err != nil {
+			err2 = err
+		} else {
+			n2 = int(n)
+		}
+
+		left.Close()
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	if err1 != nil && err2 != nil {
+		err = fmt.Errorf("both copier failed; left: %s; right: %s", err1, err2)
+	} else {
+		if err1 != nil {
+			err = err1
+		} else if err2 != nil {
+			err = err2
+		}
+	}
+
+	return n1, n2, err
+}
 
 type tcpProxy struct {
 	listen        string
@@ -25,7 +72,7 @@ func (p *tcpProxy) handleClient(conn *net.TCPConn) {
 	fromTCPConn := conn
 	toConn, err := net.Dial("tcp", p.dst)
 	if err != nil {
-		logger.LogWarning(err)
+		slog.Error(err.Error())
 		return
 	}
 
@@ -33,24 +80,24 @@ func (p *tcpProxy) handleClient(conn *net.TCPConn) {
 
 	if p.keepAlive {
 		if err := fromTCPConn.SetKeepAlive(true); err != nil {
-			logger.LogWarningf("Set KeepAlive failed: %s", err)
+			slog.Warn(fmt.Sprintf("Set KeepAlive failed: %s", err))
 		}
 		if err := fromTCPConn.SetKeepAlivePeriod(time.Duration(p.keepAliveTime) * time.Second); err != nil {
-			logger.LogWarning("Set KeepAlivePeriod failed: %s", err)
+			slog.Warn(fmt.Sprintf("Set KeepAlivePeriod failed: %s", err))
 		}
 		if err := toTCPConn.SetKeepAlive(true); err != nil {
-			logger.LogWarningf("Set KeepAlive failed: %s", err)
+			slog.Warn(fmt.Sprintf("Set KeepAlive failed: %s", err))
 		}
 		if err := toTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
-			logger.LogWarning("Set KeepAlivePeriod failed: %s", err)
+			slog.Warn(fmt.Sprintf("Set KeepAlivePeriod failed: %s", err))
 		}
 	}
 
-	logger.LogDebugf("established connection: %s", toConn.RemoteAddr())
-	defer logger.LogDebugf("association lost: %s<->%s", conn.RemoteAddr(), toConn.RemoteAddr())
+	slog.Debug(fmt.Sprintf("established connection: %s", toConn.RemoteAddr()))
+	defer slog.Debug(fmt.Sprintf("association lost: %s<->%s", conn.RemoteAddr(), toConn.RemoteAddr()))
 
-	if _, _, err = helpers.BidirectCopy(fromTCPConn, toTCPConn); err != nil {
-		logger.LogDebug(err)
+	if _, _, err = bidirectCopy(fromTCPConn, toTCPConn); err != nil {
+		slog.Debug(err.Error())
 	}
 }
 
@@ -63,11 +110,11 @@ func (p *tcpProxy) Serve() error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			logger.LogWarning(err)
+			slog.Warn(err.Error())
 			continue
 		}
 
-		logger.LogDebugf("got connection: %s", conn.RemoteAddr())
+		slog.Debug(fmt.Sprintf("got connection: %s", conn.RemoteAddr()))
 		go p.handleClient(conn.(*net.TCPConn))
 	}
 }
@@ -86,71 +133,54 @@ type runtimeOptions struct {
 
 func main() {
 	opts := runtimeOptions{}
-	getopt.StringVar(&opts.listen, "l", "", "listen on this addr:port")
-	getopt.StringVar(&opts.to, "t", "", "specify address mapping to")
-	getopt.BoolVar(&opts.keepAlive, "a", false, "enable tcp keepalive probes")
-	getopt.IntVar(&opts.keepAliveTime, "k", 25, "specify keepalive time in seconds")
-	getopt.StringVar(&opts.socks, "s", "", "enable a socks5 listener on addr:port")
-	getopt.StringVar(&opts.username, "u", "", "optional username for SOCKS server")
-	getopt.StringVar(&opts.password, "p", "", "optional password for SOCKS server")
-	getopt.BoolVar(&opts.verbose, "v", false, "enable debugging output")
-	getopt.BoolVar(&opts.help, "h", false, "show this page and exit")
+	pflag.StringVarP(&opts.listen, "listen", "l", "", "listen on this addr:port")
+	pflag.StringVarP(&opts.to, "to", "t", "", "specify address mapping to")
+	pflag.BoolVar(&opts.keepAlive, "keep-alive", false, "enable tcp keepalive probes")
+	pflag.IntVar(&opts.keepAliveTime, "keep-alive-time", 25, "specify keepalive time in seconds")
+	pflag.StringVarP(&opts.socks, "socks", "s", "", "enable a socks5 listener on addr:port")
+	pflag.StringVar(&opts.username, "socks-user", "", "optional username for SOCKS server")
+	pflag.StringVar(&opts.password, "socks-password", "", "optional password for SOCKS server")
+	pflag.BoolVarP(&opts.verbose, "verbose", "v", false, "enable debugging output")
 
-	err := getopt.Parse()
-	if err != nil {
-		logger.LogError(err)
+	pflag.Parse()
+
+	var level slog.Level
+	if opts.verbose {
+		level = slog.LevelDebug
+	} else {
+		level = slog.LevelInfo
+	}
+
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	var wg sync.WaitGroup
+	if opts.listen == "" || opts.to == "" {
+		slog.Error("no address mapping specified; specify --listen and --to")
 		os.Exit(1)
 	}
 
-	if opts.help {
-		getopt.Usage()
-		os.Exit(0)
-	}
-
-	logger.SetColors(true)
-	if opts.verbose {
-		logger.SetLogLevel(penlog.PrioDebug)
-	} else {
-		logger.SetLogLevel(penlog.PrioInfo)
-	}
-
-	var wg sync.WaitGroup
-	if opts.listen != "" {
-		if opts.listen == "" || opts.to == "" {
-			logger.LogError("no address mapping specified")
+	slog.Info(fmt.Sprintf("tcp proxy listening on '%s'; proxying to '%s'", opts.listen, opts.to))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		proxy := tcpProxy{
+			listen:        opts.listen,
+			dst:           opts.to,
+			keepAlive:     opts.keepAlive,
+			keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
+		}
+		if err := proxy.Serve(); err != nil {
+			slog.Error(err.Error())
 			os.Exit(1)
 		}
+	}()
 
-		logger.LogInfof("tcp proxy listening on '%s'; proxying to '%s'", opts.listen, opts.to)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			proxy := tcpProxy{
-				listen:        opts.listen,
-				dst:           opts.to,
-				keepAlive:     opts.keepAlive,
-				keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
-			}
-			if err := proxy.Serve(); err != nil {
-				logger.LogError(err)
-				os.Exit(1)
-			}
-		}()
-	}
-	if opts.socks != "" {
-		logger.LogInfof("socks5 proxy listening on '%s'", opts.socks)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			proxy := socks5.NewServer(opts.socks, opts.username, opts.password)
-			if err := proxy.Serve(); err != nil {
-				logger.LogError(err)
-				os.Exit(1)
-			}
-		}()
-
-	}
-	logger.LogInfof("started rumpelsepp's rtcp server")
+	slog.Info("started rumpelsepp's rtcp server")
 	wg.Wait()
-	logger.LogError("proxy terminated, did you provide a config?")
+	slog.Error("proxy terminated")
+	os.Exit(1)
 }
