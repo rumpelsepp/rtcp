@@ -155,30 +155,20 @@ func main() {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	var wg sync.WaitGroup
 	if opts.listen == "" || opts.target == "" {
 		slog.Error("no address mapping specified; specify --listen and --target")
 		os.Exit(1)
 	}
 
 	slog.Info(fmt.Sprintf("tcp relay listening on '%s'; forwarding to '%s'", opts.listen, opts.target))
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		proxy := tcpRelay{
-			listen:        opts.listen,
-			target:        opts.target,
-			keepAlive:     opts.keepAlive,
-			keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
-		}
-		if err := proxy.Serve(); err != nil {
-			slog.Error(err.Error())
-			os.Exit(1)
-		}
-	}()
-
-	slog.Info("started rumpelsepp's rtcp server")
-	wg.Wait()
-	slog.Error("proxy terminated")
-	os.Exit(1)
+	proxy := tcpRelay{
+		listen:        opts.listen,
+		target:        opts.target,
+		keepAlive:     opts.keepAlive,
+		keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
+	}
+	if err := proxy.Serve(); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
 }
