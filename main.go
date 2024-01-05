@@ -65,22 +65,22 @@ func bidirectCopy(left io.ReadWriteCloser, right io.ReadWriteCloser) (int, int, 
 	return n1, n2, err
 }
 
-type tcpProxy struct {
+type tcpRelay struct {
 	listen        string
-	dst           string
+	target        string
 	keepAlive     bool
 	keepAliveTime time.Duration
 }
 
-func (p *tcpProxy) handleClient(conn *net.TCPConn) {
+func (p *tcpRelay) handleClient(conn *net.TCPConn) {
 	fromTCPConn := conn
-	toConn, err := net.Dial("tcp", p.dst)
+	targetConn, err := net.Dial("tcp", p.target)
 	if err != nil {
 		slog.Error(err.Error())
 		return
 	}
 
-	toTCPConn := toConn.(*net.TCPConn)
+	targetTCPConn := targetConn.(*net.TCPConn)
 
 	if p.keepAlive {
 		if err := fromTCPConn.SetKeepAlive(true); err != nil {
@@ -89,23 +89,23 @@ func (p *tcpProxy) handleClient(conn *net.TCPConn) {
 		if err := fromTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
 			slog.Warn(fmt.Sprintf("Set KeepAlivePeriod failed: %s", err))
 		}
-		if err := toTCPConn.SetKeepAlive(true); err != nil {
+		if err := targetTCPConn.SetKeepAlive(true); err != nil {
 			slog.Warn(fmt.Sprintf("Set KeepAlive failed: %s", err))
 		}
-		if err := toTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
+		if err := targetTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
 			slog.Warn(fmt.Sprintf("Set KeepAlivePeriod failed: %s", err))
 		}
 	}
 
-	slog.Debug(fmt.Sprintf("established connection: %s", toConn.RemoteAddr()))
-	defer slog.Debug(fmt.Sprintf("association lost: %s<->%s", conn.RemoteAddr(), toConn.RemoteAddr()))
+	slog.Debug(fmt.Sprintf("established connection: %s", targetConn.RemoteAddr()))
+	defer slog.Debug(fmt.Sprintf("association lost: %s<->%s", conn.RemoteAddr(), targetConn.RemoteAddr()))
 
-	if _, _, err = bidirectCopy(fromTCPConn, toTCPConn); err != nil {
+	if _, _, err = bidirectCopy(fromTCPConn, targetTCPConn); err != nil {
 		slog.Debug(err.Error())
 	}
 }
 
-func (p *tcpProxy) Serve() error {
+func (p *tcpRelay) Serve() error {
 	ln, err := net.Listen("tcp", p.listen)
 	if err != nil {
 		return err
@@ -127,15 +127,15 @@ type runtimeOptions struct {
 	listen        string
 	keepAlive     bool
 	keepAliveTime time.Duration
-	to            string
+	target        string
 	verbose       bool
 	help          bool
 }
 
 func main() {
 	opts := runtimeOptions{}
-	pflag.StringVarP(&opts.listen, "listen", "l", "", "listen on this addr:port")
-	pflag.StringVarP(&opts.to, "to", "t", "", "specify address mapping to")
+	pflag.StringVarP(&opts.listen, "listen", "l", "", "listen on this addr:port; hostnames are allowed")
+	pflag.StringVarP(&opts.target, "target", "t", "", "specify relay target")
 	pflag.BoolVar(&opts.keepAlive, "keep-alive", false, "enable tcp keepalive probes")
 	pflag.DurationVar(&opts.keepAliveTime, "keep-alive-time", 25*time.Second, "specify keepalive time in seconds")
 	pflag.BoolVarP(&opts.verbose, "verbose", "v", false, "enable debugging output")
@@ -156,18 +156,18 @@ func main() {
 	slog.SetDefault(logger)
 
 	var wg sync.WaitGroup
-	if opts.listen == "" || opts.to == "" {
-		slog.Error("no address mapping specified; specify --listen and --to")
+	if opts.listen == "" || opts.target == "" {
+		slog.Error("no address mapping specified; specify --listen and --target")
 		os.Exit(1)
 	}
 
-	slog.Info(fmt.Sprintf("tcp proxy listening on '%s'; proxying to '%s'", opts.listen, opts.to))
+	slog.Info(fmt.Sprintf("tcp relay listening on '%s'; forwarding to '%s'", opts.listen, opts.target))
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		proxy := tcpProxy{
+		proxy := tcpRelay{
 			listen:        opts.listen,
-			dst:           opts.to,
+			target:        opts.target,
 			keepAlive:     opts.keepAlive,
 			keepAliveTime: time.Duration(opts.keepAliveTime) * time.Second,
 		}
