@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Stefan Tatschner
+#
+# SPDX-License-Identifier: MIT
+
 GO ?= go
 
 rtcp:

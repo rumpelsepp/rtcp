@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: Stefan Tatschner
+//
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
