@@ -82,7 +82,7 @@ func (p *tcpProxy) handleClient(conn *net.TCPConn) {
 		if err := fromTCPConn.SetKeepAlive(true); err != nil {
 			slog.Warn(fmt.Sprintf("Set KeepAlive failed: %s", err))
 		}
-		if err := fromTCPConn.SetKeepAlivePeriod(time.Duration(p.keepAliveTime) * time.Second); err != nil {
+		if err := fromTCPConn.SetKeepAlivePeriod(p.keepAliveTime); err != nil {
 			slog.Warn(fmt.Sprintf("Set KeepAlivePeriod failed: %s", err))
 		}
 		if err := toTCPConn.SetKeepAlive(true); err != nil {
@@ -122,11 +122,8 @@ func (p *tcpProxy) Serve() error {
 type runtimeOptions struct {
 	listen        string
 	keepAlive     bool
-	keepAliveTime int
+	keepAliveTime time.Duration
 	to            string
-	socks         string
-	username      string
-	password      string
 	verbose       bool
 	help          bool
 }
@@ -136,10 +133,7 @@ func main() {
 	pflag.StringVarP(&opts.listen, "listen", "l", "", "listen on this addr:port")
 	pflag.StringVarP(&opts.to, "to", "t", "", "specify address mapping to")
 	pflag.BoolVar(&opts.keepAlive, "keep-alive", false, "enable tcp keepalive probes")
-	pflag.IntVar(&opts.keepAliveTime, "keep-alive-time", 25, "specify keepalive time in seconds")
-	pflag.StringVarP(&opts.socks, "socks", "s", "", "enable a socks5 listener on addr:port")
-	pflag.StringVar(&opts.username, "socks-user", "", "optional username for SOCKS server")
-	pflag.StringVar(&opts.password, "socks-password", "", "optional password for SOCKS server")
+	pflag.DurationVar(&opts.keepAliveTime, "keep-alive-time", 25*time.Second, "specify keepalive time in seconds")
 	pflag.BoolVarP(&opts.verbose, "verbose", "v", false, "enable debugging output")
 
 	pflag.Parse()
